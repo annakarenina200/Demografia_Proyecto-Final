@@ -1,0 +1,278 @@
+---
+title: "Trabajo Final Demografía (Versión Preliminar)"
+subtitle: "Informe Técnico: Construcción de Tablas de Mortalidad del estado de Colima 2010, 2019 y 2021"
+author:
+- "Ingrid Dayana Martinez Mendoza"
+- "Ana Karen Morelos Bojórquez"
+date: "`r format(Sys.Date(), '%d de %B de %Y')`"
+format: pdf
+editor: visual
+fontsize: 11pt
+---
+
+## Quarto
+
+Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+
+# Introducción
+
+Las tablas de mortalidad constituyen una herramienta fundamental en el análisis demográfico y actuarial, permitiendo cuantificar los patrones de mortalidad de una población específica. El presente documento detalla la metodología empleada para la construcción de las tablas de vida del estado de Colima para los años 2010, 2019 y 2021, desagregadas por sexo, respondiendo a los requerimientos del cliente para la adecuada evaluación de riesgos y proyecciones actuariales.
+
+# Contexto Demográfico del Estado de Colima
+
+## Características Poblacionales y su Relación con la Mortalidad
+
+Colima, siendo uno de los estados con menor extensión territorial en México, presenta particularidades demográficas que influyen directamente en su estructura de mortalidad:
+
+### Estructura Poblacional:
+
+-   Población estimada de 731,391 habitantes (2020), con densidad media-alta
+
+-   Proceso de envejecimiento acelerado en la última década
+
+-   Alta urbanización (85% en zonas urbanas) que afecta el acceso a servicios de salud
+
+### Determinantes Sociales:
+
+-   Indicadores educativos superiores al promedio nacional
+
+-   Economía basada en actividades portuarias, comerciales y turísticas
+
+-   Cobertura de servicios de salud con disparidades regionales
+
+### Patrones Epidemiológicos:
+
+-   Transición epidemiológica avanzada con predominio de enfermedades crónico-degenerativas
+
+-   Mortalidad por causas externas relacionada con actividad portuaria y turística
+
+-   Vulnerabilidad específica ante eventos pandémicos por densidad poblacional
+
+# Diagrama de flujo
+
+```{r}
+#| echo: false
+#| out.width: "50%"
+knitr::include_graphics("Diagrama_flujo.drawio.png")
+```
+
+# Algoritmos usados
+
+**1. Algoritmos de Cálculo de APV**
+
+-   **APV 2010:**
+
+```{r}
+N <- expo(censos_pro[year==2010]$pop, 
+          censos_pro[year==2020]$pop, 
+          t_0 = "2010-06-25", t_T = "2020-03-15", t = 2010.5)
+apv2010 <- censos_pro[year==2010, .(age, sex, N)]
+apv2010[, year := 2010]
+```
+
+-   **APV 2019:**
+
+```{r}
+N <- expo(censos_pro[year==2010]$pop, 
+          censos_pro[year==2020]$pop, 
+          t_0 = "2010-06-25", t_T = "2020-03-15", t = 2019.5)
+apv2019 <- censos_pro[year==2010, .(age, sex, N)]
+apv2019[, year := 2019]
+```
+
+-   **APV 2021:**
+
+```{r}
+N <- expo(censos_pro[year==2010]$pop, 
+          censos_pro[year==2020]$pop, 
+          t_0 = "2010-06-25", t_T = "2020-03-15", t = 2021.5)
+apv2021 <- censos_pro[year==2020, .(age, sex, N)]
+apv2021[, year := 2021]
+```
+
+**2. Procesamiento de Defunciones**
+
+-   **Promedio para 2010 y datos directos para 2019, 2021:**
+
+```{r}
+def_pro <- fread("data/def_pro.csv") %>%
+  .[year %in% c(2009, 2010, 2011, 2019, 2021)]
+
+def_pro[, year_new := ifelse(year %in% 2009:2011, 2010,
+                            ifelse(year %in% 2018:2019, 2019, year))]
+
+def <- def_pro[, .(deaths = mean(deaths)), 
+               by = .(year = year_new, sex, age)]
+```
+
+**3. Fórmulas Matemáticas Implementadas**
+
+-   **3.1 Crecimiento Exponencial para APV**
+
+    -   **Tasa de crecimiento instantánea:** $$
+        r = \frac{\ln(P_T) - \ln(P_0)}{t_T - t_0}
+        $$
+    -   **Crecimiento exponencial para APV:** $$
+        P(t) = P_0 \cdot e^{r \cdot (t - t_0)}
+        $$
+
+-   **3.2 Tasas de Mortalidad**
+
+    -   **Tasa de mortalidad específica:** $$
+          m_x = \frac{D_x}{E_x}
+        $$
+
+    -   **Tasa central de mortalidad:** $$
+        _nm_x = \frac{_nD_x}{_nN_x} \approx \frac{_nd_x}{_nL_x}
+        $$
+
+    -   **Fuerza de mortalidad (instantánea):** $$
+        \mu(x) = \lim_{n \to 0} nm_x = -\frac{d \ln l(x)}{dx}
+        $$
+
+-   **3.3 Conversión mx a qx (Greville-Chiang):** $$
+    _nq_x = \frac{n \cdot _nm_x}{1 + (n - _na_x) \cdot _nm_x}
+    $$
+
+-   **3.4 Construcción tabla de vida:** $$
+    l_0 = 100000
+    $$ $$
+    _nd_x = l_x \cdot _nq_x
+    $$ $$
+    l_{x+n} = l_x - _nd_x
+    $$ $$
+    _nL_x = n \cdot l_{x+n} + _na_x \cdot _nd_x
+    $$ $$
+    T_x = \sum_{y \ge x} L_y
+    $$ $$
+    e_x = \frac{T_x}{l_x}
+    $$
+
+-   **3.5 Grupo final abierto:** $$
+    \infty L_x = \frac{l_x}{\infty m_x}$$
+
+# Codigo usado
+
+-   **Fuentes de Información Población:**
+
+    -   Censo de Población y Vivienda 2010: [INEGI 2010](https://www.inegi.org.mx/programas/ccpv/2010/)
+
+    -   Censo de Población y Vivienda 2020: [INEGI 2020](https://www.inegi.org.mx/programas/ccpv/2020/)
+
+-   **Defunciones:**
+
+    -   Estadísticas Vitales de Mortalidad 2010-2021: [INEGI EDR](https://www.inegi.org.mx/programas/mortalidad/)
+
+## Limpieza y preparación de datos (00_pre_process.R)
+
+Transformar los datos crudos del INEGI en tablas limpias y listas para análisis.
+
+**Proceso:**
+
+1.  **Carga de datos originales**
+    -   Lectura de archivos Excel del INEGI con información censal y de defunciones
+    -   Extracción de datos desde rangos específicos de las hojas de cálculo
+2.  **Limpieza y estandarización**
+    -   **Edades**: Conversión de formato texto a numérico ("0-4 años" → 0)
+    -   **Valores numéricos**: Transformación de formatos con comas ("1,000" → 1000)
+    -   **Estructura**: Eliminación de filas de totales y encabezados redundantes
+    -   **Consistencia**: Homogenización de grupos de edad entre diferentes años
+3.  **Tratamiento de valores missing**
+    -   **Prorrateo inteligente**: Distribución proporcional de valores "No especificado" en edad y sexo
+    -   **Método**: Asignación basada en la estructura conocida de los datos
+    -   **Objetivo**: Maximizar la información disponible sin distorsionar los patrones demográficos
+4.  **Almacenamiento de datos procesados**
+    -   Exportación de tablas limpias en formato CSV
+    -   Preservación de la estructura consistente para análisis posteriores
+
+**Resultado final**: Conjuntos de datos censales y de defunciones completamente depurados, consistentes metodológicamente y listos para el cálculo de indicadores demográficos.
+
+## Calculo de poblaciones a mitad de año (01_apv.R)
+
+Estimar las poblaciones por edad y sexo en puntos intermedios entre los censos, esencial para el cálculo preciso de tasas de mortalidad.
+
+**Proceso:**
+
+1.  **Interpolación exponencial de poblaciones**
+    -   **Método**: Aplicación de crecimiento exponencial entre censos 2010 y 2020
+    -   **Puntos calculados**:
+        -   2010.5 (mitad de año 2010)
+        -   2019.5 (mitad de año 2019)
+        -   2021.5 (mitad de año 2021)
+    -   **Fórmula**: $P(t) = P_0 \cdot e^{r \cdot (t - t_0)}$
+2.  **Visualización de estructura poblacional**
+    -   **Pirámides poblacionales**: Gráficas comparativas por edad y sexo
+    -   **Análisis visual**: Identificación de patrones demográficos y cambios temporales
+    -   **Escalas adaptadas**: Presentación en millones para mejor interpretación
+3.  **Consolidación de datos**
+    -   **Unificación**: Integración de APV para los tres años de estudio
+    -   **Estructura consistente**: Mismo formato para todos los períodos
+    -   **Validación**: Verificación de coherencia entre estimaciones
+
+**Resultado final**: Poblaciones estimadas por edad y sexo para 2010, 2019 y 2021, fundamentales para el cálculo robusto de indicadores de mortalidad.
+
+## Procesamiento de defunciones (02_def.R)
+
+Preparar y estabilizar los datos de defunciones para asegurar comparabilidad temporal y minimizar fluctuaciones anuales aleatorias.
+
+**Proceso:**
+
+1.  **Selección estratégica de años**
+    -   **Para 2010**: Inclusión de 2009-2011 (promedio trianual)
+    -   **Para 2019 y 2021**: Datos directos según especificaciones del proyecto
+    -   **Objetivo**: Balance entre estabilidad estadística y precisión temporal
+2.  **Asignación de años de referencia**
+    -   **Sistema coherente**: Asignación consistente con las poblaciones calculadas
+    -   **Agrupación inteligente**: Consolidación de años alrededor de cada punto de estudio
+    -   **Compatibilidad**: Aseguramiento de correspondencia con las APV
+3.  **Cálculo de promedios**
+    -   **Método**: Media aritmética para suavizar variaciones anuales
+    -   **Ventaja**: Reduce el impacto de fluctuaciones estadísticas temporales
+    -   **Aplicación**: Específica para cada combinación edad-sexo-año
+
+**Resultado final**: Defunciones procesadas y estabilizadas, listas para el cálculo preciso de tasas de mortalidad específicas por edad.
+
+## Conctruccion de tablas de vida (03_lt.R)
+
+Integrar toda la información procesada para generar tablas de mortalidad completas y calcular los indicadores demográficos clave del estudio.
+
+**Proceso:**
+
+1.  **Integración de datos fundamentales**
+    -   **Unión precisa**: Combinación de poblaciones (APV) y defunciones por edad, sexo y año
+    -   **Cálculo de tasas**: $m_x = \frac{\text{defunciones}}{\text{población}}$ para cada grupo
+    -   **Estandarización**: Conversión de sexo a formato abreviado (male→m, female→f)
+2.  **Aplicación del método actuarial**
+    -   **Función lt_abr()**: Implementación del método Greville-Chiang para tablas abreviadas
+    -   **Conversión**: Transformación de tasas ($m_x$) a probabilidades ($q_x$)
+    -   **Indicadores**: Cálculo de sobrevivientes ($l_x$), defunciones ($d_x$), años vividos ($L_x$), esperanzas de vida ($e_x$)
+3.  **Generación de indicadores estratégicos**
+    -   **Esperanza de vida al nacer**: $e_0$ por sexo y año
+    -   **Mortalidad infantil**: $q_0$ como indicador de salud poblacional
+    -   **Análisis comparativo**: Evolución temporal 2010-2019-2021
+4.  **Visualización avanzada**
+    -   **Tasas de mortalidad**: Gráficas de $log(m_x)$ por edad y sexo
+    -   **Probabilidades de muerte**: Escala logarítmica para mejor visualización de patrones
+    -   **Análisis temporal**: Comparación entre los tres períodos de estudio
+
+**Resultado final**: Tablas de vida completas para Colima 2010-2021, con todos los indicadores necesarios para el análisis demográfico y evaluación del impacto de COVID-19.
+
+## 0. Preprocesamiento (ESTO CREO QUE YA NO SE PONE)
+
+Gráfica de las pirámides de población 2010, 2020
+
+$$
+_nm_x=\frac{_nD_x}{_nN_x}
+$$
+
+Años persona vividos
+
+$$
+_nD_x^{s} = \frac{_nD_x^{(y-1)} + _nD_x^{(y)} + nD_x^{(y+1)}}{3}
+$$
+
+Limpieza de tablas del [INEGI](https://www.inegi.org.mx/programas/ccpv/2020/), el archivo tiene de nombre `00_pre_process`.
+
+When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+
+Los APV se calcularon de la siguiente manera:

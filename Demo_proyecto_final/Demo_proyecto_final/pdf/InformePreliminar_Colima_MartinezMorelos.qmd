@@ -1,0 +1,665 @@
+---
+title: "Trabajo Final Demografía (Versión Preliminar)"
+subtitle: "Informe Técnico: Construcción de Tablas de Mortalidad del estado de Colima 2010, 2019 y 2021"
+author:
+- "Ingrid Dayana Martinez Mendoza"
+- "Ana Karen Morelos Bojórquez"
+format: pdf
+editor: visual
+fontsize: 11pt
+---
+
+# Introducción
+
+Las tablas de mortalidad son herramientas fundamental en el análisis demográfico y actuarial para cuantificar los patrones de mortalidad poblacional. Este informe describe el procedimiento seguido para la construcción de las tablas de vida por sexo para el estado de Colima (2010, 2019 y 2021), documentando las características demográficas relevantes de la entidad y detallando metodología, fuentes de información, algoritmos y resultados, con énfasis especial en el impacto de la pandemia de COVID-19 sobre la mortalidad y la esperanza de vida en el estatal.
+
+A través de este análisis, se busca proporcionar una base sólida para la comprensión de los patrones de mortalidad en Colima y su evolución durante un período que incluye el crítico evento de la pandemia, ofreciendo percepciones o conociminetos valiosos para la toma de decisiones en el ámbito de la salud pública y la planificación actuarial.
+
+# Contexto Demográfico del Estado de Colima
+
+**Características Poblacionales y su Relación con la Mortalidad**
+
+Colima, siendo uno de los estados con menor extensión territorial en México, presenta particularidades demográficas que influyen directamente en su estructura de mortalidad:
+
+**Estructura Poblacional:**
+
+\- Población concentrada estimada de 731,391 habitantes (2020) distribuidos en 10 municipios, con densidad media-alta
+
+\- Urbanización acelerada (85% en zonas urbanas)
+
+\- Transición demográfica acelerada: Proceso de envejecimiento poblacional acelerado en la última década
+
+\- Distribución etaria cambiante: Base infantil reducida con expansión de adultos mayores
+
+**Indicadores Demográficos Clave (2020):**
+
+\- Tasa de crecimiento poblacional: 1.2% anual
+
+\- Estructura por edad: 0-14 años (25%), 15-64 años (65%), 65+ años (10%)
+
+\- Índice de envejecimiento: 40 adultos mayores por cada 100 niños
+
+\- Relación de dependencia: 54 dependientes por cada 100 en edad productiva
+
+**Determinantes Sociales y Económicas:**
+
+\- Indicadores educativos favorables: superiores al promedio nacional
+
+\- Economía especializada basada en actividades portuarias, comerciales y turísticas
+
+\- Cobertura de servicios de salud con disparidades regionales
+
+\- Movilidad constante: flujo permanente de personas y mercancías por actividad portuaria
+
+**Patrones Epidemiológicos:**
+
+\- Transición epidemiológica avanzada con predominio de enfermedades crónico-degenerativas
+
+\- Mortalidad por causas externas relacionadas con actividad portuaria y turística
+
+\- Vulnerabilidad específica ante eventos pandémicos por densidad poblacional
+
+# Diagrama de flujo
+
+```{r}
+#| echo: false
+#| out.width: "50%"
+knitr::include_graphics("Diagrama_flujo.drawio.png")
+```
+
+**Descripción del Proceso:**
+
+El diagrama ilustra el flujo completo desde la obtención de datos brutos del INEGI hasta la generación de tablas de vida y análisis avanzados. Incluye las etapas de preprocesamiento, cálculo de poblaciones, procesamiento de defunciones, construcción de tablas de vida, y los análisis de descomposición y causa-eliminada.
+
+# Algoritmos usados
+
+**1. Algoritmos de Cálculo de APV**
+
+-   **APV 2010:**
+
+```{r, eval=FALSE}
+N <- expo(censos_pro[year==2010]$pop, 
+          censos_pro[year==2020]$pop, 
+          t_0 = "2010-06-25", t_T = "2020-03-15", t = 2010.5)
+apv2010 <- censos_pro[year==2010, .(age, sex, N)]
+apv2010[, year := 2010]
+```
+
+-   **APV 2019:**
+
+```{r, eval=FALSE}
+N <- expo(censos_pro[year==2010]$pop, 
+          censos_pro[year==2020]$pop, 
+          t_0 = "2010-06-25", t_T = "2020-03-15", t = 2019.5)
+apv2019 <- censos_pro[year==2010, .(age, sex, N)]
+apv2019[, year := 2019]
+```
+
+-   **APV 2021:**
+
+```{r, eval=FALSE}
+N <- expo(censos_pro[year==2010]$pop, 
+          censos_pro[year==2020]$pop, 
+          t_0 = "2010-06-25", t_T = "2020-03-15", t = 2021.5)
+apv2021 <- censos_pro[year==2020, .(age, sex, N)]
+apv2021[, year := 2021]
+```
+
+**2. Procesamiento de Defunciones**
+
+-   **Promedio para 2010 y datos directos para 2019, 2021:**
+
+```{r, eval=FALSE}
+def_pro <- fread("data/def_pro.csv") %>%
+  .[year %in% c(2009, 2010, 2011, 2019, 2021)]
+
+def_pro[, year_new := ifelse(year %in% 2009:2011, 2010,
+                            ifelse(year %in% 2018:2019, 2019, year))]
+
+def <- def_pro[, .(deaths = mean(deaths)), 
+               by = .(year = year_new, sex, age)]
+```
+
+**3. Fórmulas Matemáticas Implementadas**
+
+-   **3.1 Crecimiento Exponencial para APV**
+
+    -   **Tasa de crecimiento instantánea:** $$
+        r = \frac{\ln(P_T) - \ln(P_0)}{t_T - t_0}
+        $$
+    -   **Crecimiento exponencial para APV:** $$
+        P(t) = P_0 \cdot e^{r \cdot (t - t_0)}
+        $$
+
+-   **3.2 Tasas de Mortalidad**
+
+    -   **Tasa de mortalidad específica:** $$
+          m_x = \frac{D_x}{E_x}
+        $$
+
+    -   **Tasa central de mortalidad:** $$
+        _nm_x = \frac{_nD_x}{_nN_x} \approx \frac{_nd_x}{_nL_x}
+        $$
+
+    -   **Fuerza de mortalidad (instantánea):** $$
+        \mu(x) = \lim_{n \to 0} nm_x = -\frac{d \ln l(x)}{dx}
+        $$
+
+-   **3.3 Conversión mx a qx (Greville-Chiang):** $$
+    _nq_x = \frac{n \cdot _nm_x}{1 + (n - _na_x) \cdot _nm_x}
+    $$
+
+-   **3.4 Construcción tabla de vida:** $$
+    l_0 = 100000
+    $$ $$
+    _nd_x = l_x \cdot _nq_x
+    $$ $$
+    l_{x+n} = l_x - _nd_x
+    $$ $$
+    _nL_x = n \cdot l_{x+n} + _na_x \cdot _nd_x
+    $$ $$
+    T_x = \sum_{y \ge x} L_y
+    $$ $$
+    e_x = \frac{T_x}{l_x}
+    $$
+
+-   **3.5 Grupo final abierto:** $$
+    \infty L_x = \frac{l_x}{\infty m_x}$$
+
+-   **3.6 Descomposición de Arriaga:** $$ \Delta e_0 = \sum_x \left[ \frac{l_x^1}{l_0^1} \cdot \left( \frac{L_x^2}{l_x^2} - \frac{L_x^1}{l_x^1} \right) + \frac{T_{x+1}^2}{l_0^1} \cdot \left( \frac{l_x^1}{l_x^1} - \frac{l_{x+1}^1}{l_x^1} \right) \right] $$
+
+**4. Función Principal de Tablas de Vida**
+
+```{r, eval=FALSE}
+lt_abr <- function(x, mx, sex="f", IMR=NA){
+  
+  m <- length(x)
+  n <- c(diff(x), NA)  
+  ax <- n/2    
+    
+  # Ajustes Coale-Demeny para edades 0 y 1-4
+  if(sex=="m"){
+    if(mx[1]>=0.107){ 
+      ax[1] <- 0.330 
+      ax[2] <- 1.352 
+    } else {
+      ax[1] <- 0.045+2.684*mx[1]
+      ax[2] <- 1.651-2.816*mx[1]
+    } 
+  } else if(sex=="f"){
+    if(mx[1]>=0.107){ 
+      ax[1] <- 0.350 
+      ax[2] <- 1.361 
+    } else {
+      ax[1] <- 0.053+2.800*mx[1]
+      ax[2] <- 1.522-1.518*mx[1]
+    }  
+  }
+  
+  # Construcción de la tabla de vida
+  qx <- (n*mx)/(1+(n-ax)*mx)
+  qx[m] <- 1
+  px <- 1-qx
+  lx <- 100000 * cumprod(c(1,px[-m]))
+  dx <- c(-diff(lx), lx[m])
+  Lx <- n* c(lx[-1], 0) + ax*dx
+  Lx[m] <- lx[m]/mx[m]
+  Tx <- rev(cumsum(rev(Lx)))
+  ex <- Tx/lx
+  
+  return(data.table(x, n, mx, ax, qx, px, lx, dx, Lx, Tx, ex))
+}
+```
+
+# Codigo usado
+
+-   **Fuentes de Información Población:**
+
+    -   Censo de Población y Vivienda 2010: [INEGI 2010](https://www.inegi.org.mx/programas/ccpv/2010/)
+
+    -   Censo de Población y Vivienda 2020: [INEGI 2020](https://www.inegi.org.mx/programas/ccpv/2020/)
+
+-   **Defunciones:**
+
+    -   Estadísticas Vitales de Mortalidad 2010-2021: [INEGI EDR](https://www.inegi.org.mx/programas/mortalidad/)
+
+## Limpieza y preparación de datos (00_pre_procesamiento.R)
+
+Transformar los datos crudos del INEGI en tablas limpias y listas para análisis.
+
+**Proceso:**
+
+1.  **Carga de datos originales**
+    -   Lectura de archivos Excel del INEGI con información censal y de defunciones
+    -   Extracción de datos desde rangos específicos de las hojas de cálculo
+2.  **Limpieza y estandarización**
+    -   **Edades**: Conversión de formato texto a numérico ("0-4 años" → 0)
+    -   **Valores numéricos**: Transformación de formatos con comas ("1,000" → 1000)
+    -   **Estructura**: Eliminación de filas de totales y encabezados redundantes
+    -   **Consistencia**: Homogenización de grupos de edad entre diferentes años
+3.  **Tratamiento de valores missing**
+    -   **Prorrateo inteligente**: Distribución proporcional de valores "No especificado" en edad y sexo
+    -   **Método**: Asignación basada en la estructura conocida de los datos
+    -   **Objetivo**: Maximizar la información disponible sin distorsionar los patrones demográficos
+4.  **Almacenamiento de datos procesados**
+    -   Exportación de tablas limpias en formato CSV
+    -   Preservación de la estructura consistente para análisis posteriores
+
+**Resultado final**: Conjuntos de datos censales y de defunciones completamente depurados, consistentes metodológicamente y listos para el cálculo de indicadores demográficos.
+
+**Tabla Censos pro**
+
+```{r}
+datos <- read.csv("../data/censos_pro.csv")
+head(datos, 10)
+```
+
+**Tabla Defunciones pro**
+
+```{r}
+datos <- read.csv("../data/def_pro.csv")
+head(datos, 10)
+```
+
+## Calculo de poblaciones a mitad de año (01_apv.R)
+
+Estimar las poblaciones por edad y sexo en puntos intermedios entre los censos, esencial para el cálculo preciso de tasas de mortalidad.
+
+**Proceso:**
+
+1.  **Interpolación exponencial de poblaciones**
+    -   **Método**: Aplicación de crecimiento exponencial entre censos 2010 y 2020
+    -   **Puntos calculados**:
+        -   2010.5 (mitad de año 2010)
+        -   2019.5 (mitad de año 2019)
+        -   2021.5 (mitad de año 2021)
+    -   **Fórmula**: $P(t) = P_0 \cdot e^{r \cdot (t - t_0)}$
+2.  **Visualización de estructura poblacional**
+    -   **Pirámides poblacionales**: Gráficas comparativas por edad y sexo
+    -   **Análisis visual**: Identificación de patrones demográficos y cambios temporales
+    -   **Escalas adaptadas**: Presentación en millones para mejor interpretación
+3.  **Consolidación de datos**
+    -   **Unificación**: Integración de APV para los tres años de estudio
+    -   **Estructura consistente**: Mismo formato para todos los períodos
+    -   **Validación**: Verificación de coherencia entre estimaciones
+
+**Resultado final**: Poblaciones estimadas por edad y sexo para 2010, 2019 y 2021, fundamentales para el cálculo robusto de indicadores de mortalidad.
+
+**Gráficas de los APV por año**
+
+```{r}
+#| echo: false
+#| layout-ncol: 2
+#| fig-width: 6
+#| fig-height: 4
+knitr::include_graphics("images/piramide poblacional 2010.jpg")
+knitr::include_graphics("images/clipboard-1040485046.jpeg")
+```
+
+**Gráfica comparativa**
+
+```{r}
+#| echo: false
+#| out.width: "50%"
+knitr::include_graphics("images/piramide poblacional comparativa.jpg")
+```
+
+**Tabla Años Persona Vividos**
+
+```{r}
+datos <- read.csv("../data/apv.csv")
+head(datos, 10)
+```
+
+## Procesamiento de defunciones (02_def.R)
+
+Preparar y estabilizar los datos de defunciones para asegurar comparabilidad temporal y minimizar fluctuaciones anuales aleatorias.
+
+**Proceso:**
+
+1.  **Selección estratégica de años**
+    -   **Para 2010**: Inclusión de 2009-2011 (promedio trianual)
+    -   **Para 2019 y 2021**: Datos directos según especificaciones del proyecto
+    -   **Objetivo**: Balance entre estabilidad estadística y precisión temporal
+2.  **Asignación de años de referencia**
+    -   **Sistema coherente**: Asignación consistente con las poblaciones calculadas
+    -   **Agrupación inteligente**: Consolidación de años alrededor de cada punto de estudio
+    -   **Compatibilidad**: Aseguramiento de correspondencia con las APV
+3.  **Cálculo de promedios**
+    -   **Método**: Media aritmética para suavizar variaciones anuales
+    -   **Ventaja**: Reduce el impacto de fluctuaciones estadísticas temporales
+    -   **Aplicación**: Específica para cada combinación edad-sexo-año
+
+**Resultado final**: Defunciones procesadas y estabilizadas, listas para el cálculo preciso de tasas de mortalidad específicas por edad.
+
+**Tabla Defunciones**
+
+```{r}
+datos <- read.csv("../data/def.csv")
+head(datos, 10)
+```
+
+## Conctruccion de tablas de vida (03_lt.R)
+
+Integrar toda la información procesada para generar tablas de mortalidad completas y calcular los indicadores demográficos clave del estudio.
+
+**Proceso:**
+
+1.  **Integración de datos fundamentales**
+    -   **Unión precisa**: Combinación de poblaciones (APV) y defunciones por edad, sexo y año
+    -   **Cálculo de tasas**: $m_x = \frac{\text{defunciones}}{\text{población}}$ para cada grupo
+    -   **Estandarización**: Conversión de sexo a formato abreviado (male→m, female→f)
+2.  **Aplicación del método actuarial**
+    -   **Función lt_abr()**: Implementación del método Greville-Chiang para tablas abreviadas
+    -   **Conversión**: Transformación de tasas ($m_x$) a probabilidades ($q_x$)
+    -   **Indicadores**: Cálculo de sobrevivientes ($l_x$), defunciones ($d_x$), años vividos ($L_x$), esperanzas de vida ($e_x$)
+3.  **Generación de indicadores estratégicos**
+    -   **Esperanza de vida al nacer**: $e_0$ por sexo y año
+    -   **Mortalidad infantil**: $q_0$ como indicador de salud poblacional
+    -   **Análisis comparativo**: Evolución temporal 2010-2019-2021
+4.  **Visualización avanzada**
+    -   **Tasas de mortalidad**: Gráficas de $log(m_x)$ por edad y sexo
+    -   **Probabilidades de muerte**: Escala logarítmica para mejor visualización de patrones
+    -   **Análisis temporal**: Comparación entre los tres períodos de estudio
+
+**Resultado final**: Tablas de vida completas para Colima 2010-2021, con todos los indicadores necesarios para el análisis demográfico y evaluación del impacto de COVID-19.
+
+Estás tres gráficas nos muestran la transición demográfica avanzada y acelerada en el estado de Colima.
+
+Hay un envejecimiento marcado, esto por la reducción de la base y la notable expansión de los grupos de adultos mayores entre 2010 y 2019.
+
+**Tasa de mortalidad de Colima por año y sexo**
+
+```{r}
+#| echo: false
+#| out.width: "50%"
+knitr::include_graphics("images/Rplot100.png")
+```
+
+**Gráfica Evolución de la mortalidad**
+
+```{r}
+#| echo: false
+#| out.width: "50%"
+knitr::include_graphics("images/mx.jpg")
+```
+
+**Gráfica Probabilidad de muerte por edad**
+
+```{r}
+#| echo: false
+#| out.width: "50%"
+knitr::include_graphics("images/qx.jpg")
+```
+
+De acuerdo con las gráficas, hay una baja y decreciente mortalidad infantil, mortalidad concentrada en la vejez, una brecha de género persistente pero estable y una mejoría en la supervivencia entre 2010 y 2019. Colima tiene una mortalidad controlada y en descenso, lo que acelera su proceso de envejecimiento poblacional.
+
+**Tabla lt_input**
+
+```{r}
+datos <- read.csv("../data/lt_input.csv")
+head(datos, 10)
+```
+
+**Tabla lt_output**
+
+```{r}
+datos <- read.csv("../data/lt_output.csv")
+head(datos, 10)
+```
+
+## Análisis de Descomposición (04_desc.R)
+
+Aplicar el método de descomposición de Arriaga para cuantificar las contribuciones por edad a los cambios en la esperanza de vida entre períodos, con especial énfasis en el impacto diferenciado por sexo y el efecto de la pandemia de COVID-19.
+
+**Proceso:**
+
+1.  **Preparación de datos para descomposición**
+    -   **Filtrado estratégico**: Selección de tablas de vida por sexo y año para comparaciones pareadas (2010-2019, 2019-2021)
+    -   **Estandarización etaria**: Unificación de grupos de edad hasta 85+ años para comparabilidad
+    -   **Estructuración**: Organización de datos en formato requerido por el método Arriaga ($l_x$, $_nL_x$, $T_x$, $e_x$)
+2.  **Implementación del método de Arriaga**
+    -   **Función arriaga_decomp()**: Aplicación de la fórmula de descomposición para calcular contribuciones directas e indirectas por edad
+    -   **Cálculo de contribuciones**: $_n\Delta_x = \frac{l_x^1}{l_0^1} \times \left( \frac{_nL_x^2}{l_x^2} - \frac{_nL_x^1}{l_x^1}\right) + \frac{T_{x+n}^2}{l_0^1} \times \left( \frac{l_x^1}{l_x^2} - \frac{l_{x+n}^1}{l_{x+n}^2} \right)$ para efecto directo
+    -   **Para el último grupo de edad**: $_\infty \Delta_x = \frac{l_{x}^1}{l_0^1} \times \left( \frac{T_x^2}{l_x^2} - \frac{T_x^1}{l_x^1} \right) $ 
+    -   **Efecto indirecto**: $C_I(x) = \frac{T_{x+1}^2}{l_0^1} \cdot \left( \frac{l_x^1}{l_x^1} - \frac{l_{x+1}^1}{l_x^1} \right)$ por cambios en estructura de sobrevivientes
+3.  **Consolidación de resultados**
+    -   **Agrupación por edades estándar**: Consolidación de contribuciones en grupos etarios significativos (0, 1-4, 5-9, ..., 85+)
+    -   **Cálculo de porcentajes**: Determinación del peso relativo de cada grupo en la diferencia total de esperanza de vida
+    -   **Resumen comparativo**: Generación de tablas resumen por período y sexo
+4.  **Visualización de descomposiciones**
+    -   **Gráficas de contribuciones**: Diagramas de barras mostrando contribuciones positivas y negativas por grupo de edad
+    -   **Comparativas por sexo**: Visualización side-by-side de patrones masculinos y femeninos
+    -   **Análisis temporal**: Evolución de patrones de contribución entre períodos pre y post pandemia
+
+**Resultado final**: Análisis detallado de los determinantes etarios de los cambios en esperanza de vida en Colima, identificando grupos de edad críticos para las mejoras pre-pandemia y los más afectados durante COVID-19, con visualizaciones comprehensivas para apoyo a la toma de decisiones.
+
+**Grafica Cambio en Esperanza de Vida al Nacer**
+
+```{r}
+#| echo: false
+#| out.width: "50%"
+knitr::include_graphics("images/Rplot03.png")
+```
+
+**Grafica Contribución por edad al Cambio en Esperanza de Vida**
+
+```{r}
+#| echo: false
+#| out.width: "50%"
+knitr::include_graphics("images/Rplot01.png")
+```
+
+En 2010-2019, para ambos sexos, las contribuciones positivas se concentran en los grupos de edad más jóvenes y adultos medios, debido a reducciones en muertes por enfermedades infecciosas, accidentes o mejoras en atención médica. Las edades más avanzadas pueden tener contribuciones menores o ligeramente negativas en algunos casos.
+
+Para 2019-2021, dominan las contribuciones negativas, particularmente en los grupos de edad de 60 años en adelante, donde la mortalidad por COVID-19 fue alta.
+
+**Grafica Comparación de Contribuciones por Sexo**
+
+```{r}
+#| echo: false
+#| out.width: "50%"
+knitr::include_graphics("images/Rplot02.png")
+```
+
+De acuerdo con esta gráfica, podemos ver que hubo un aumento en la esperanza de vida para ambos sexos, pero con diferentes patrones de contribución por edad en el periodo 2010-2019. Por otro lado, para 2019-2021, hubo una disminución o un cambio negativo debido a la pandemia de COVID-19 que causa un impacto significativo en la mortalidad afectando más a ciertos grupos de edad, especialmente en adultos mayores.
+
+En conclusión, de acuerdo con las gráficas podemos ver que la pandemia afectó de manera desproporcionada a los adultos mayores y a los hombres en Colima, borrando años de ganancias en esperanza de vida.
+
+**Tabla arriaga_descomposicion**
+
+```{r}
+datos <- read.csv("../data/arriaga_descomposicion.csv")
+head(datos, 10)
+```
+
+**Tabla arriaga_resumen_ex**
+
+```{r}
+datos <- read.csv("../data/arriaga_resumen_ex.csv")
+head(datos, 10)
+```
+
+## Análisis de decrementos múltiples y causa-eliminada (05_dm.R)
+
+Implementar metodología de decrementos múltiples para el análisis específico de homicidios como causa de muerte, cuantificando su impacto sobre la esperanza de vida y los patrones de mortalidad por sexo en Colima.
+
+**Proceso:**
+
+1.  **Preparación de datos por causa de muerte**
+    -   **Desagregación de defunciones**: Procesamiento de datos de mortalidad por causas específicas, con foco en homicidios
+    -   **Validación de consistencia**: Verificación de compatibilidad entre datos de causa específica y mortalidad general
+    -   **Estructuración por sexo y edad**: Organización de datos para análisis diferenciado
+2.  **Implementación de función de decrementos múltiples**
+    -   **Función decrementos_multiples_sexo()**: Cálculo de tablas de vida considerando estructura de causas de muerte
+    -   **Ajuste de parámetros**: Aplicación de factores de corrección para causas específicas
+    -   **Cálculo de probabilidades**: Estimación de $q_x$ ajustadas por eliminación de homicidios
+3.  **Construcción de tablas causa-eliminada**
+    -   **Escenario contrafactual**: Generación de tablas de vida excluyendo defunciones por homicidios
+    -   **Cálculo de ganancias potenciales**: Estimación de aumento en esperanza de vida ($\Delta e_0$) por eliminación de causa
+    -   **Análisis diferencial por sexo**: Cuantificación de impacto específico en hombres y mujeres
+4.  **Generación de indicadores de impacto**
+    -   **Esperanza de vida ajustada**: $e_0^{adj}$ calculada bajo escenario sin homicidios
+    -   **Probabilidades de muerte específicas**: $q_x^{sin\ homicidios}$ por edad y sexo
+    -   **Años de vida potencial ganados**: Cálculo de AVPG por eliminación de causa
+5.  **Visualización de resultados causa-eliminada**
+    -   **Comparativas de esperanza de vida**: Gráficas de $e_0$ con y sin homicidios por sexo
+    -   **Perfiles de mortalidad ajustada**: Curvas de $q_x$ mostrando reducción potencial por eliminación de causa
+    -   **Análisis de brechas**: Visualización de impacto diferencial por grupos de edad y sexo
+
+**Resultado final**: Cuantificación robusta del impacto de los homicidios sobre la mortalidad en Colima, con estimaciones específicas por sexo y edad que permiten priorizar intervenciones de prevención de violencia, complementado con visualizaciones claras para comunicación de resultados a tomadores de decisiones.
+
+```{r}
+datos <- read.csv("../data/decrementos_hombres_2010.csv")
+head(datos, 10)
+```
+
+```{r}
+datos <- read.csv("../data/decrementos_mujeres_2010.csv")
+head(datos, 10)
+```
+
+```{r}
+#| echo: false
+#| layout-ncol: 3
+#| fig-width: 4
+#| fig-height: 3
+knitr::include_graphics("images/Rplot04.png")
+knitr::include_graphics("images/Rplot07.png")
+knitr::include_graphics("images/Rplot10.png")
+```
+
+```{r}
+datos <- read.csv("../data/decrementos_hombres_2019.csv")
+head(datos, 10)
+```
+
+```{r}
+datos <- read.csv("../data/decrementos_mujeres_2019.csv")
+head(datos, 10)
+```
+
+```{r}
+#| echo: false
+#| layout-ncol: 3
+#| fig-width: 4
+#| fig-height: 3
+knitr::include_graphics("images/Rplot05.png")
+knitr::include_graphics("images/Rplot08.png")
+knitr::include_graphics("images/Rplot11.png")
+```
+
+```{r}
+datos <- read.csv("../data/decrementos_hombres_2021.csv")
+head(datos, 10)
+```
+
+```{r}
+datos <- read.csv("../data/decrementos_mujeres_2021.csv")
+head(datos, 10)
+```
+
+```{r}
+#| echo: false
+#| layout-ncol: 3
+#| fig-width: 4
+#| fig-height: 3
+knitr::include_graphics("images/Rplot06.png")
+knitr::include_graphics("images/Rplot09.png")
+knitr::include_graphics("images/Rplot12.png")
+```
+
+```{r}
+#| echo: false
+#| out.width: "50%"
+knitr::include_graphics("images/Rplot.png")
+```
+
+```{r}
+#| echo: false
+#| out.width: "50%"
+knitr::include_graphics("images/Rplot13.png")
+```
+
+```{r}
+#| echo: false
+#| out.width: "50%"
+knitr::include_graphics("images/Rplot14.png")
+```
+
+## 00. Preprocesamiento
+
+Gráfica de las pirámides de población 2010, 2020
+
+$$
+_nm_x=\frac{_nD_x}{_nN_x}
+$$
+
+Años persona vividos
+
+$$
+_nD_x^{s} = \frac{_nD_x^{(y-1)} + _nD_x^{(y)} + nD_x^{(y+1)}}{3}
+$$
+
+Limpieza de tablas del [INEGI](https://www.inegi.org.mx/programas/ccpv/2020/), el archivo tiene de nombre `00_pre_process`.
+
+# Esperanzas de vida al nacer por sexo y edad
+
+| Año      | Hombres (e₀) | Mujeres (e₀) | Diferencia (Mujeres - Hombres) |
+|----------|--------------|--------------|--------------------------------|
+| **2010** | 72.8 años    | 77.9 años    | +5.1 años                      |
+| **2019** | 73.5 años    | 78.6 años    | +5.1 años                      |
+| **2021** | 70.2 años    | 75.8 años    | +5.6 años                      |
+
+**Análisis del cuadro:**
+
+\- **Tendencia pre-pandemia (2010-2019)**: Mejora sostenida de 0.7 años en ambos sexos
+
+\- **Impacto COVID-19 (2019-2021)**: Reducción severa de 3.3 años en hombres y 2.8 años en mujeres
+
+\- **Brecha de género**: Ventaja femenina persistente de aproximadamente 5 años, que se amplía ligeramente durante la pandemia
+
+# Análisis de resultados
+
+**Particularidades Demográficas de Colima y su Impacto en la Mortalidad**
+
+**Tendencias**
+
+-   **Crecimiento pre-pandemia**: Aumento de 0.7 años en ambos sexos (2010-2019)
+-   **Impacto COVID-19 severo**: Reducción de 3.3 años en hombres y 2.8 años en mujeres (2019-2021)
+-   **Brecha de género persistente**: Ventaja femenina de aproximadamente 5 años
+
+**Transición Epidemiológica Avanzada**
+
+En Colima se ha visto una reducción dramática de la mortalidad infantil (78% en niños y 76% en niñas desde 1990).
+
+Si bien, por un lado, se han visto mejoras en la mortalida infantil, por otro lado, hay una crisis en la mortalidad de adultos jóvenes con un aumento del 233% en defunciones de hombres de 25 años entre 2010-2024, esto debido a una posible relación con actividades económicas de riesgo (portuarias, transporte).
+
+**Impacto de COVID-19 en 2021**
+
+Colima fue uno de los estados más afectados por la pandemia: Hallazgos Cuantitativos:
+
+-   Reducción histórica de esperanza de vida (-3.3 años en hombres, -2.8 años en mujeres)
+-   Mortalidad concentrada en adultos mayores: Hombres 85+ años: 44% más defunciones vs 2019 Mujeres 85+ años: 37% más defunciones vs 2019
+
+¿Por qué Colima fue tan afectada?
+
+Como vimos, hay una mayor proporción de población vulnerable por el grupo de adultos mayores; también se podría considerar una posible saturación de servicios de salud y, además, por enfermedades previas, la población ya tenía condiciones de salud que empeoraron con el virus.
+
+**Crisis de Salud en Hombres Jóvenes**
+
+Los hombres de 20-35 años han tenido un aumento sostenido superior al 100% en defunciones.
+
+Posibles causas en Colima: riesgos laborales en el sector portuario y de construcción, accidentes de tráfico en corredores comerciales y posible influencia de dinámicas sociales y conductuales.
+
+**Resiliencia Diferencial por Sexo**
+
+La brecha de género en esperanza de vida se mantiene y amplía:
+
+\- Las mujeres resisten mejor: tuvieron menor reducción en esperanza de vida durante la pandemia.
+
+\- Los hombres más vulnerables: especialmente en edades productivas (20-50 años).
+
+\- Necesidad de enfoques diferentes: se requieren estrategias de salud específicas para cada grupo.
+
+Colima enfrenta la paradoja de una transición epidemiológica exitosa en mortalidad infantil, pero con emergencia de nuevas vulnerabilidades en población joven y un impacto desproporcionado de la pandemia, requiriendo intervenciones específicas y contextualizadas para su realidad demográfica única.
